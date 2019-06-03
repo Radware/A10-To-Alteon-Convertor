@@ -1,4 +1,4 @@
-# A10ToAlteonConvertor
+# A10-To-Alteon-Convertor
 
 ## Table Of Contents ###
 - [Description](#description )
@@ -18,7 +18,7 @@ In order to use the script make sure you have installed python3<br>
 Download all git content and run the script while providing original file and project names as arguments<br>
 For example : 
 ```
-# git clone https://github.com/Radware/Linkproof-to-Alteon-Migration.git
+# git clone https://github.com/Radware/A10-To-Alteon-Convertor.git
 # python convertor.py "a10_config.txt" "Project_Name"
 ```
 
