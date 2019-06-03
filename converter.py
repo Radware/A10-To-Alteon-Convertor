@@ -1,8 +1,10 @@
-import re, sys
+import re
+import sys
+
 from params import *
 
 argument_len = len(sys.argv)
-if argument_len == 1 :
+if argument_len == 1:
     print("Please provide project name and A10 config file!")
     sys.exit(1)
 elif argument_len == 2:
@@ -243,7 +245,7 @@ def fun_group_parser(group_cfg):
                 flag1 = member_list[i].split('#')[1]
                 member_list[i] = member_list[i].split('#')[0]
             elif flag1 == "D" or flag1 != member_list[i].split('#')[1]:
-                print("Found members with different port number!")
+                fun_unhandeled("Group "+name, "Found members with different port number!")
                 flag1 = "D"
             if member_list[i].split('#')[0] in real_dict:
                 if 'health' in real_dict[member_list[i].split('#')[0]] and health == \
@@ -349,7 +351,6 @@ def fun_natpool_parser(natpoolconfig):
 
 
 def fun_virt_parser(virtconfig):
-    # noinspection PyGlobalUndefined
     global virt_dict
     global vip_list
     for virt in re.findall('(^slb virtual-server.+\n( .+\n)+!)', virtconfig, re.MULTILINE):
@@ -513,16 +514,18 @@ def alteon_config_print():
                     cfgstring = "\n/c/l3/if "
                     flag = 1
                 elif item == 'port':
-                    cfgstring = "/c/port "
+                    cfgstring = "\n/c/port "
                     flag = 1
                 if flag:
+                    if_counter = 0
                     for if_id in int_dict[device][item]:
-                        out.write(cfgstring + if_id + "\n")
+                        if_counter += 1
+                        out.write(cfgstring + str(if_counter) + "\n")
                         for cfg in int_dict[device][item][if_id]:
                             out.write("\t" + cfg + " " + int_dict[device][item][if_id][cfg] + "\n")
                 else:
                     if item == 'mgmt':
-                        out.write("/c/sys/mmgmt\n")
+                        out.write("\n/c/sys/mmgmt\n")
                         for cfg in int_dict[device][item]:
                             out.write("\t" + cfg + " " + int_dict[device][item][cfg] + "\n")
 
@@ -539,7 +542,7 @@ def alteon_config_print():
                     out.write("\t" + cfg + " " + vlan_dict[device][vlan][cfg] + "\n")
 
         if device in route_dict:
-            out.write("\n/c/l3/route/ipv4\n")
+            out.write("\n/c/l3/route/ip4\n")
             for route in route_dict[device]:
                 net, mask = route.split('/')
                 out.write("\tadd " + net + " " + prefix_mask_dict[mask] + " " + route_dict[device][route] + "\n")
@@ -587,7 +590,6 @@ def alteon_config_print():
         for cfg in health_dict[item]:
             if cfg != "hctype":
                 out.write("\t" + cfg + " " + health_dict[item][cfg] + "\n")
-
 
 
 config_dict = fun_config_split(file.read())
