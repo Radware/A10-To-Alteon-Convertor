@@ -379,19 +379,22 @@ def fun_virt_parser(virtconfig):
             for x in arr_service:
                 if x == 'port':
                     srvcport = next(arr_service)
-                    virt_dict[name].update({srvcport: {'protocol': next(arr_service)}})
+                    if 'service' in virt_dict[name]:
+                        virt_dict[name]['service'].update({srvcport: {'protocol': next(arr_service)}})
+                    else:
+                        virt_dict[name].update({'service': {srvcport: {'protocol': next(arr_service)}}})
                 elif x == 'service-group':
-                    virt_dict[name][srvcport].update({'group': next(arr_service).replace('$$!!Rad!!$$', ' ')})
+                    virt_dict[name]['service'][srvcport].update({'group': next(arr_service).replace('$$!!Rad!!$$', ' ')})
                 elif x == 'source-nat':
                     tmp = next(arr_service)
                     if tmp == 'pool':
-                        virt_dict[name][srvcport].update({'pip': {'mode': 'nwclass', 'nwclass': next(arr_service)}})
+                        virt_dict[name]['service'][srvcport].update({'pip': {'mode': 'nwclass', 'nwclass': next(arr_service)}})
                     else:
                         fun_unhandeled("PIP", tmp)
                 elif x == 'name':
-                    virt_dict[name][srvcport].update({'name': next(arr_service)})
+                    virt_dict[name]['service'][srvcport].update({'name': '"'+next(arr_service)+'"'})
                 elif x == 'ha-conn-mirror':
-                    virt_dict[name].update({'ha-conn-mirror': ""})
+                    virt_dict[name].update({'ha-conn-mirror': "ena"})
                 elif x == 'use-rcv-hop-for-resp':
                     virt_dict[name].update({'rtsrcmac': "ena"})
                 elif x == '!':
@@ -415,18 +418,22 @@ def fun_virt_parser(virtconfig):
 def fun_template_parser(tmplconfig):
     global tmpl_dict
     for tmpl in re.findall('(^slb template .+\n?( .+\n)+!)', tmplconfig, re.MULTILINE):
-        # print(tmpl)
         str_tmpl = ''.join(tmpl[:-1])
         arr_tmpl = str_tmpl.split()
         tmpl_type, tmpl_name = arr_tmpl[2:4]
         tmpl_dict.update({tmpl_name: {'type': tmpl_type}})
-        for line in str_tmpl.splitlines()[1:-1]:
-            if tmpl_type == "http" and line.replace(' ', '') == 'insert-client-ip':
-                tmpl_dict[tmpl_name].update({'xff': 'ena'})
-            elif line.split()[0] == 'idle-timeout':
-                tmpl_dict[tmpl_name].update({'ptmout': int(int(line.split()[1]) / 60)})
-            else:
-                fun_unhandeled("Template \"" + tmpl_name + "\"", line)
+        str_tmp2 = str_tmpl.splitlines()[:-1]
+        if len(str_tmp2) == 1:
+            if arr_tmpl[4] == "src-persisitency":
+                tmpl_dict[tmpl_name].update({'pbind': 'clientip'})
+        else:
+            for line in str_tmp2:
+                if tmpl_type == "http" and line.replace(' ', '') == 'insert-client-ip':
+                    tmpl_dict[tmpl_name].update({'xff': 'ena'})
+                elif line.split()[0] == 'idle-timeout':
+                    tmpl_dict[tmpl_name].update({'ptmout': int(int(line.split()[1]) / 60)})
+                else:
+                    fun_unhandeled("Template \"" + tmpl_name + "\"", line)
 
     return re.sub(re.compile(r'(^slb template .+\n( .+\n)+!)', re.MULTILINE), '', tmplconfig)
 
@@ -590,6 +597,40 @@ def alteon_config_print():
         for cfg in health_dict[item]:
             if cfg != "hctype":
                 out.write("\t" + cfg + " " + health_dict[item][cfg] + "\n")
+
+    for item in virt_dict:
+        strtmpl = ""
+        out.write("\n/c/slb/virt " + item)
+        for attrib in virt_dict[item]:
+            if attrib == 'service':
+                continue
+            elif attrib == 'tmpl':
+                for tmpl in virt_dict[item][attrib]:
+                    if virt_dict[item][attrib][tmpl]['type'] not in ["persist", "tcp"]:
+                        strtmpl += ("\n/"+virt_dict[item][attrib][tmpl]['type'])
+                    for tmplattrib in virt_dict[item][attrib][tmpl]:
+                        if tmplattrib != 'type':
+                            strtmpl += ("\n\t" + tmplattrib + " " + str(virt_dict[item][attrib][tmpl][tmplattrib]))
+                    if virt_dict[item][attrib][tmpl]['type'] not in ["persist", "tcp"]:
+                        strtmpl += ("\n/..")
+            else:
+                out.write("\n\t"+attrib+" "+virt_dict[item][attrib])
+        for service in virt_dict[item]['service']:
+            strpip = ""
+            strsvc = (
+                "\n/c/slb/virt " + item + "/service " + service + " " + virt_dict[item]['service'][service]['protocol'])
+            for serviceattrib in virt_dict[item]['service'][service]:
+                if serviceattrib == 'protocol':
+                    continue
+                elif serviceattrib == 'pip':
+                    strpip = (
+                        "\n/c/slb/virt " + item + "/service " + service + " " + virt_dict[item]['service'][service][
+                            'protocol'] + "/pip")
+                    for pip in virt_dict[item]['service'][service][serviceattrib]:
+                        strpip +=  ("\n\t" + pip + " " + virt_dict[item]['service'][service][serviceattrib][pip])
+                else:
+                    strsvc += ("\n\t" + serviceattrib + " " + virt_dict[item]['service'][service][serviceattrib])
+            out.write(strsvc + strtmpl + strpip)
 
 
 config_dict = fun_config_split(file.read())
