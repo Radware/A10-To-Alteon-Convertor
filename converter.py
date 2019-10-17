@@ -31,6 +31,7 @@ def fun_clear_cfg_and_dicts(cfg):
     nwclass_dict.clear()
     virt_dict.clear()
     vip_list.clear()
+    gw_dict.clear()
     tmpl_dict.clear()
     float_dict.clear()
     arp_dict.clear()
@@ -149,7 +150,7 @@ def fun_real_parser(realconfig):
         # print (arr_server)
         if '"' in arr_server[0]:
             name = arr_server[0].split('"')[1].replace(' ', '_')
-            rip = arr_server[0].split()[2]
+            rip = arr_server[0].split()[4]
         else:
             name, rip = arr_server[0].split()[2:4]
         real_dict.update({name: {"ena": "", "rip": rip}})
@@ -285,9 +286,15 @@ def fun_vlan_parser(vlanconfig):
 
 def fun_route_parser(routeconfig):
     global route_dict
+    global gw_dict
+    c = 0
     for route in re.findall('(^ip route.+)', routeconfig, re.MULTILINE):
         junk, junk, dst, mask, gw, junk, deviceid = route.split()
-        fun_dict_append([deviceid, dst + mask], gw, route_dict)
+        # print ("dst="+dst+", mask="+mask)
+        if dst == '0.0.0.0' and mask == '/0':
+            fun_dict_append([deviceid, gw], "", gw_dict)
+        else: 
+            fun_dict_append([deviceid, dst + mask], gw, route_dict)
     return re.sub(re.compile(r'(^ip route.+)', re.MULTILINE), '', routeconfig)
 
 
@@ -317,7 +324,7 @@ def fun_health_parser(healthconfig):
                 arr_line = iter(arr_line[2:])
                 for x in arr_line:
                     if x == 'port':
-                        health_dict[name].update({'port': next(arr_line)})
+                        health_dict[name].update({'dport': next(arr_line)})
                     elif x == "url":
                         health_dict[name].update(
                             {'http/method': next(arr_line) + "/..", 'http/path': "\"" + next(arr_line) + "\"" + "/.."})
@@ -329,13 +336,13 @@ def fun_health_parser(healthconfig):
                                 tmp = '"' + tmp + '"'
                         else:
                             if tmp[0] != '"':
-                                tmp = '200 "' + tmp + '"'
+                                tmp = '200 incl "' + tmp + '"'
                             else:
-                                tmp = '200 ' + tmp
+                                tmp = '200 incl ' + tmp
 
                         health_dict[name].update({'http/resp': tmp.replace('$$!!Rad!!$$', ' ') + "/.."})
                     elif x == "host":
-                        health_dict[name].update({'host': next(arr_line)})
+                        health_dict[name].update({'http/host': next(arr_line)+"/.."})
                     else:
                         print(x)
     return re.sub(re.compile(r'(^health monitor.+\n( .+\n)+!)', re.MULTILINE), '', healthconfig)
@@ -368,7 +375,7 @@ def fun_virt_parser(virtconfig):
                         index += len('$$!!Rad!!$$')
                     start = index
         arr_virt = str_virt.split()
-        name = arr_virt[2].replace('$$!!Rad!!$$', ' ')
+        name=arr_virt[2].replace('$$!!Rad!!$$', '_').replace('"','')
         virt_dict.update({name: {'vip': arr_virt[3]}})
         vip_list.append(arr_virt[3])
         for service in re.findall('(^ {3}port .+\n( .+\n)+!)', str_virt, re.MULTILINE):
@@ -379,22 +386,30 @@ def fun_virt_parser(virtconfig):
             for x in arr_service:
                 if x == 'port':
                     srvcport = next(arr_service)
+                    srvcproto = next(arr_service)
+                    if srvcproto in ['tcp','udp']:
+                        if srvcport in reservedprort_dict:
+                            # print("srvcport="+srvcport+",srvcproto="+srvcproto+", Changing proto to: "+ reservedprort_dict[srvcport])
+                            srvcproto = reservedprort_dict[srvcport]
+                        else: 
+                            srvcproto = 'basic-slb'
                     if 'service' in virt_dict[name]:
-                        virt_dict[name]['service'].update({srvcport: {'protocol': next(arr_service)}})
+                        virt_dict[name]['service'].update({srvcport: {'protocol': srvcproto}})
                     else:
-                        virt_dict[name].update({'service': {srvcport: {'protocol': next(arr_service)}}})
+                        virt_dict[name].update({'service': {srvcport: {'protocol': srvcproto}}})
                 elif x == 'service-group':
-                    virt_dict[name]['service'][srvcport].update({'group': next(arr_service).replace('$$!!Rad!!$$', ' ')})
+                    virt_dict[name]['service'][srvcport].update({'group': next(arr_service).replace('$$!!Rad!!$$', '_')})
                 elif x == 'source-nat':
                     tmp = next(arr_service)
                     if tmp == 'pool':
-                        virt_dict[name]['service'][srvcport].update({'pip': {'mode': 'nwclass', 'nwclass': next(arr_service)}})
+                        virt_dict[name]['service'][srvcport].update({'pip': {'mode': 'nwclss', 'nwclss v4': next(arr_service)+' persist d'}})
                     else:
                         fun_unhandeled("PIP", tmp)
                 elif x == 'name':
-                    virt_dict[name]['service'][srvcport].update({'name': '"'+next(arr_service)+'"'})
+                    descrip=next(arr_service).replace('$$!!Rad!!$$', ' ').replace('"','')
+                    virt_dict[name]['service'][srvcport].update({'name': '"'+descrip+'"'})
                 elif x == 'ha-conn-mirror':
-                    virt_dict[name].update({'ha-conn-mirror': "ena"})
+                    virt_dict[name]['service'][srvcport].update({'mirror': "ena"})
                 elif x == 'use-rcv-hop-for-resp':
                     virt_dict[name].update({'rtsrcmac': "ena"})
                 elif x == '!':
@@ -553,6 +568,13 @@ def alteon_config_print():
             for route in route_dict[device]:
                 net, mask = route.split('/')
                 out.write("\tadd " + net + " " + prefix_mask_dict[mask] + " " + route_dict[device][route] + "\n")
+
+        if device in gw_dict:
+            c = 0
+            for gw in gw_dict[device]:
+                c += 1
+                out.write("\n/c/l3/gw "+str(c)+"\n")
+                out.write("\tena\n\taddr " + gw + "\n")
 
         if device in arp_dict:
             out.write("/c/l3/arp/static\n")
