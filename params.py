@@ -28,6 +28,21 @@ prefix_mask_dict = {
     '31': '255.255.255.254',
     '32': '255.255.255.255'
 }
+reservedprort_dict = {
+    '21': 'ftp',
+    '25': 'smtp',
+    '53': 'dns',
+    '69': 'tftp',
+    '80': 'http',
+    '443': 'https',
+    '389': 'ldap',
+    '110': 'pop3',
+    '554': 'rtsp',
+    '1812': 'radius-auth',
+    '1813': 'radius-acc',
+    '3389': 'wrs',
+    '5060': 'sip'
+}
 int_dict = {}
 lacp_dict = {}
 real_dict = {}
@@ -38,6 +53,7 @@ health_dict = {}
 nwclass_dict = {}
 virt_dict = {}
 vip_list = []
+gw_dict = {}
 tmpl_dict = {}
 float_dict = {}
 arp_dict = {}
